@@ -135,7 +135,7 @@ public class Main {
         // Write the profile records
         while (profileFile.hasRemaining()) {
             // Read the next three Longs from the profile file
-            int threadId = (int) profileFile.getLong();
+            short threadId = (short) profileFile.getLong();
             int methodId = (int) profileFile.getLong();
             int actionCode = (int) profileFile.getLong();
 
@@ -172,7 +172,7 @@ public class Main {
             int eventTime = (int) profileFile.getLong();
 
             /* The record format is:
-             * u1 thread ID
+             * u2 thread ID
              * u4 method ID | method action
              * u4 time delta since start, in usec
              */
@@ -180,7 +180,7 @@ public class Main {
             // Stick the isCall flag in the least significant bit of methodId.
             methodId = (methodId << 2) | actionCode;
 
-            profileBuffer.put((byte) 1);
+            profileBuffer.putShort(threadId);
             profileBuffer.putInt(methodId);
             profileBuffer.putInt(eventTime);
         }
