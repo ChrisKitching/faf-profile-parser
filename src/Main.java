@@ -106,9 +106,9 @@ public class Main {
     }
 
     private static void writeFileHeader(ByteBuffer buffer) {
-        buffer.putInt(0x574f4c53);
-        buffer.putShort((short) 1);
-        buffer.putShort((short) 16);
+        buffer.putInt(0x574f4c53);   // Magic
+        buffer.putShort((short) 2);  // Version number
+        buffer.putShort((short) 16); // 16 (required)
 
         long time = System.currentTimeMillis();
         buffer.putLong(time);
@@ -117,7 +117,7 @@ public class Main {
     public static byte[] getKeyfileHeader() {
         return (
             "*version\n" +
-            "1\n" +
+            "2\n" +
             "clock=global\n" +
             "*threads\n" +
             "1 main\n" +
