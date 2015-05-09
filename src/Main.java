@@ -8,10 +8,13 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Stack;
 
 public class Main {
+    private static HashMap<Integer, String> methodNames = new HashMap<>();
+
     public static ByteBuffer readFully(String fileName) throws IOException {
         Path path = FileSystems.getDefault().getPath(fileName);
 
@@ -39,17 +42,25 @@ public class Main {
         KHANG.seed(new File(args[0]).length() * new File(args[1]).length());
 
         // Holds the complete output.
-        ByteBuffer outputBuffer = ByteBuffer.allocateDirect(10000000);
+        ByteBuffer outputBuffer = ByteBuffer.allocate(100000000);
+
+        ByteBuffer keyfileContentBuffer = ByteBuffer.allocate(10000000);
 
         // Buffers the profile records.
-        ByteBuffer profileBuffer = ByteBuffer.allocateDirect(10000000);
+        ByteBuffer profileBuffer = ByteBuffer.allocate(10000000);
 
         outputBuffer.order(ByteOrder.LITTLE_ENDIAN);
         profileBuffer.order(ByteOrder.LITTLE_ENDIAN);
+        keyfileContentBuffer.order(ByteOrder.LITTLE_ENDIAN);
+
+        // Write the methods portion of the keyfile.
+        writeKeyfile(keyfileContentBuffer, keyFile);
+        keyfileContentBuffer.flip();
 
         // We need an additional scan to determine the maximum threadId before we can complete
         // writing the actual keyfile, so we do the profile scan early.
         int maxThreadId = writeProfileRecords(profileBuffer, profileFile);
+        profileBuffer.flip();
 
         // Armed with the thread count, we can write the output file.
         outputBuffer.put(getKeyfileHeader());
@@ -57,7 +68,7 @@ public class Main {
 
         // Write the methods portion of the keyfile.
         outputBuffer.put("*methods\n".getBytes());
-        writeKeyfile(outputBuffer, keyFile);
+        outputBuffer.put(keyfileContentBuffer);
 
         // Write the end of the keyfile.
         outputBuffer.put("*end\n".getBytes());
@@ -82,19 +93,21 @@ public class Main {
 
         // Synthesize a thread name for every thread.
         for (int i = 0; i < numThreads; i++) {
-            outputBuffer.put((Integer.toString(numThreads) + "\t" + KHANG.getName() + "\n").getBytes());
+            outputBuffer.put((Integer.toString(i) + "\t" + KHANG.getName() + "\n").getBytes());
         }
 
     }
 
     private static void writeKeyfile(ByteBuffer keyfileBuffer, ByteBuffer keyFile) {
         while (keyFile.hasRemaining()) {
-            int methodId = (int) (keyFile.getLong() << 2);
+            int rawMethodId = (int) keyFile.getLong();
+            int methodId = rawMethodId << 2;
 
             // Because the traceview format is fucking stupid...
             String hexMethodId = "0x" + Integer.toHexString(methodId);
 
-            String classAndMethodName[] = readString(keyFile).split(" ");
+            String prettyName = readString(keyFile);
+            String[] classAndMethodName = prettyName.split("\t");
 
             // The class name is the prefix of the array....
             StringBuilder sb = new StringBuilder();
@@ -107,6 +120,8 @@ public class Main {
 
             // And the method name is the last one.
             String methodName = classAndMethodName[classAndMethodName.length - 1];
+
+            methodNames.put(rawMethodId, prettyName);
 
             keyfileBuffer.put(hexMethodId.getBytes());
             keyfileBuffer.put("\t".getBytes());
@@ -130,7 +145,7 @@ public class Main {
 
         // For each thread, track the methodId of the executing function. Used to verify if the
         // call stack makes sense.
-        ArrayList<Stack<Integer>> callStacks = new ArrayList<>();
+        HashMap<Short, Stack<Integer>> callStacks = new HashMap<>();
 
         // Write the profile records
         while (profileFile.hasRemaining()) {
@@ -147,7 +162,7 @@ public class Main {
             Stack<Integer> callStack = callStacks.get(threadId);
             if (callStack == null) {
                 callStack = new Stack<>();
-                callStacks.set(threadId, callStack);
+                callStacks.put(threadId, callStack);
             }
 
             if (actionCode == 0) {
@@ -156,11 +171,20 @@ public class Main {
             } else if (actionCode == 1) {
                 // Method exit. Verify that we're popping a value equal to methodId, otherwise we're
                 // trying to return from the wrong function...
-                int topOfStack = callStack.pop();
-                if (topOfStack != methodId) {
-                    System.err.println("Attempted to return from method " + methodId + " into " + topOfStack);
-                    System.exit(3);
-                    return -1;
+                if (!callStack.isEmpty()) {
+                    int topOfStack = callStack.pop();
+                    if (topOfStack != methodId) {
+                        System.err.println("Thread:" + threadId);
+                        for (Integer integer : callStack) {
+                            System.err.println("    (" + integer + "): " + methodNames.get(integer));
+                        }
+
+                        System.err.println("Top of stack method: " + methodNames.get(topOfStack) + " (" + topOfStack + ")");
+                        System.err.println("This record returns: " + methodNames.get(methodId) + " (" + methodId + ")");
+
+                        System.exit(3);
+                        return -1;
+                    }
                 }
             } else {
                 // PANIC
