@@ -32,13 +32,6 @@ public class Main {
         ByteBuffer keyFile = readFully(args[0]);
         ByteBuffer profileFile = readFully(args[1]);
 
-        profileFile.getLong();
-        profileFile.getLong();
-        profileFile.getLong();
-        profileFile.getLong();
-        profileFile.getLong();
-        profileFile.getLong();
-
         ByteBuffer outputBuffer = ByteBuffer.allocateDirect(10000000);
         outputBuffer.order(ByteOrder.LITTLE_ENDIAN);
 
