@@ -7,6 +7,9 @@ import java.nio.channels.FileChannel;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Stack;
 
 public class Main {
     public static ByteBuffer readFully(String fileName) throws IOException {
@@ -120,9 +123,14 @@ public class Main {
 
     /**
      * Write the profile records in profileFile to the given output buffer.
+     * Verifies that the stack makes sense as it goes along.
      */
     private static int writeProfileRecords(ByteBuffer profileBuffer, ByteBuffer profileFile) {
         int maxThreadID = 0;
+
+        // For each thread, track the methodId of the executing function. Used to verify if the
+        // call stack makes sense.
+        ArrayList<Stack<Integer>> callStacks = new ArrayList<>();
 
         // Write the profile records
         while (profileFile.hasRemaining()) {
@@ -133,6 +141,32 @@ public class Main {
 
             if (threadId > maxThreadID) {
                 maxThreadID = threadId;
+            }
+
+            // Get or create the callstack for the current thread.
+            Stack<Integer> callStack = callStacks.get(threadId);
+            if (callStack == null) {
+                callStack = new Stack<>();
+                callStacks.set(threadId, callStack);
+            }
+
+            if (actionCode == 0) {
+                // Method entry
+                callStack.push(methodId);
+            } else if (actionCode == 1) {
+                // Method exit. Verify that we're popping a value equal to methodId, otherwise we're
+                // trying to return from the wrong function...
+                int topOfStack = callStack.pop();
+                if (topOfStack != methodId) {
+                    System.err.println("Attempted to return from method " + methodId + " into " + topOfStack);
+                    System.exit(3);
+                    return -1;
+                }
+            } else {
+                // PANIC
+                System.err.println("Unexpected actionCode in bagging area: " + actionCode);
+                System.exit(2);
+                return -1;
             }
 
             int eventTime = (int) profileFile.getLong();
@@ -153,7 +187,7 @@ public class Main {
 
         profileFile.rewind();
 
-        return maxThreadID
+        return maxThreadID;
     }
 
     private static void writeFileHeader(ByteBuffer buffer) {
