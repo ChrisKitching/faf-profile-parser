@@ -32,12 +32,59 @@ public class Main {
         ByteBuffer keyFile = readFully(args[0]);
         ByteBuffer profileFile = readFully(args[1]);
 
+        // Nothing to see here.
+        KHANG.seed(new File(args[0]).length() * new File(args[1]).length());
+
+        // Holds the complete output.
         ByteBuffer outputBuffer = ByteBuffer.allocateDirect(10000000);
+
+        // Buffers the profile records.
+        ByteBuffer profileBuffer = ByteBuffer.allocateDirect(10000000);
+
         outputBuffer.order(ByteOrder.LITTLE_ENDIAN);
+        profileBuffer.order(ByteOrder.LITTLE_ENDIAN);
 
-        // Write the keyfile
+        // We need an additional scan to determine the maximum threadId before we can complete
+        // writing the actual keyfile, so we do the profile scan early.
+        int maxThreadId = writeProfileRecords(profileBuffer, profileFile);
+
+        // Armed with the thread count, we can write the output file.
         outputBuffer.put(getKeyfileHeader());
+        writeThreadKeymap(outputBuffer, maxThreadId);
 
+        // Write the methods portion of the keyfile.
+        outputBuffer.put("*methods\n".getBytes());
+        writeKeyfile(outputBuffer, keyFile);
+
+        // Write the end of the keyfile.
+        outputBuffer.put("*end\n".getBytes());
+
+        // Write the trace file (which we've already buffered in profileBuffer)
+        writeFileHeader(outputBuffer);
+        outputBuffer.put(profileBuffer);
+
+        File file = new File("out.trace");
+        FileChannel channel = new FileOutputStream(file, false).getChannel();
+        outputBuffer.flip();
+        channel.write(outputBuffer);
+        channel.close();
+    }
+
+    private static void writeThreadKeymap(ByteBuffer outputBuffer, int numThreads) {
+        if (numThreads > 65536) {
+            System.err.println("The traceview format cannot handle >65536 threads!");
+            System.exit(1);
+            return;
+        }
+
+        // Synthesize a thread name for every thread.
+        for (int i = 0; i < numThreads; i++) {
+            outputBuffer.put((Integer.toString(numThreads) + "\t" + KHANG.getName() + "\n").getBytes());
+        }
+
+    }
+
+    private static void writeKeyfile(ByteBuffer keyfileBuffer, ByteBuffer keyFile) {
         while (keyFile.hasRemaining()) {
             int methodId = (int) (keyFile.getLong() << 2);
 
@@ -45,7 +92,6 @@ public class Main {
             String hexMethodId = "0x" + Integer.toHexString(methodId);
 
             String classAndMethodName[] = readString(keyFile).split(" ");
-
 
             // The class name is the prefix of the array....
             StringBuilder sb = new StringBuilder();
@@ -59,27 +105,34 @@ public class Main {
             // And the method name is the last one.
             String methodName = classAndMethodName[classAndMethodName.length - 1];
 
-            outputBuffer.put(hexMethodId.getBytes());
-            outputBuffer.put("\t".getBytes());
-            outputBuffer.put(className.getBytes());
-            outputBuffer.put("\t".getBytes());
-            outputBuffer.put(methodName.getBytes());
+            keyfileBuffer.put(hexMethodId.getBytes());
+            keyfileBuffer.put("\t".getBytes());
+            keyfileBuffer.put(className.getBytes());
+            keyfileBuffer.put("\t".getBytes());
+            keyfileBuffer.put(methodName.getBytes());
 
             // A default signature to keep the parser happy.
-            outputBuffer.put("\t()V\n".getBytes());
+            keyfileBuffer.put("\t()V\n".getBytes());
         }
 
-        outputBuffer.put("*end\n".getBytes());
-        writeFileHeader(outputBuffer);
+        keyFile.rewind();
+    }
+
+    /**
+     * Write the profile records in profileFile to the given output buffer.
+     */
+    private static int writeProfileRecords(ByteBuffer profileBuffer, ByteBuffer profileFile) {
+        int maxThreadID = 0;
 
         // Write the profile records
         while (profileFile.hasRemaining()) {
             // Read the next three Longs from the profile file
+            int threadId = (int) profileFile.getLong();
             int methodId = (int) profileFile.getLong();
             int actionCode = (int) profileFile.getLong();
 
-            if (actionCode != 0 && actionCode != 1) {
-                System.err.println("AAAAAAAAAAAA: " + actionCode);
+            if (threadId > maxThreadID) {
+                maxThreadID = threadId;
             }
 
             int eventTime = (int) profileFile.getLong();
@@ -93,16 +146,14 @@ public class Main {
             // Stick the isCall flag in the least significant bit of methodId.
             methodId = (methodId << 2) | actionCode;
 
-            outputBuffer.put((byte) 1);
-            outputBuffer.putInt(methodId);
-            outputBuffer.putInt(eventTime);
+            profileBuffer.put((byte) 1);
+            profileBuffer.putInt(methodId);
+            profileBuffer.putInt(eventTime);
         }
 
-        File file = new File("out.trace");
-        FileChannel channel = new FileOutputStream(file, false).getChannel();
-        outputBuffer.flip();
-        channel.write(outputBuffer);
-        channel.close();
+        profileFile.rewind();
+
+        return maxThreadID
     }
 
     private static void writeFileHeader(ByteBuffer buffer) {
@@ -119,9 +170,7 @@ public class Main {
             "*version\n" +
             "2\n" +
             "clock=global\n" +
-            "*threads\n" +
-            "1 main\n" +
-            "*methods\n"
+            "*threads\n"
         ).getBytes();
     }
 }
