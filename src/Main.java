@@ -42,10 +42,10 @@ public class Main {
         // Holds the complete output.
         ByteBuffer outputBuffer = ByteBuffer.allocate(100000000);
 
-        ByteBuffer keyfileContentBuffer = ByteBuffer.allocate(10000000);
+        ByteBuffer keyfileContentBuffer = ByteBuffer.allocate(100000000);
 
         // Buffers the profile records.
-        ByteBuffer profileBuffer = ByteBuffer.allocate(10000000);
+        ByteBuffer profileBuffer = ByteBuffer.allocate(100000000);
 
         outputBuffer.order(ByteOrder.LITTLE_ENDIAN);
         profileBuffer.order(ByteOrder.LITTLE_ENDIAN);
@@ -93,6 +93,7 @@ public class Main {
         for (int i = 0; i < numThreads; i++) {
             outputBuffer.put((Integer.toString(i) + "\t" + KHANG.getName() + "\n").getBytes());
         }
+
     }
 
     private static void writeKeyfile(ByteBuffer keyfileBuffer, ByteBuffer keyFile) {
@@ -184,6 +185,8 @@ public class Main {
                         System.exit(3);
                         return -1;
                     }
+                } else {
+                    continue;
                 }
             } else {
                 // PANIC
