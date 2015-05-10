@@ -13,6 +13,16 @@ import java.util.HashMap;
 import java.util.Stack;
 
 public class Main {
+    public static String    repeat(
+        String 
+        s, int
+        times)
+{
+    if (times <= 0)     return "";
+            else
+                    return s + repeat   (s, times-1);
+        }
+
     private static HashMap<Integer, String> methodNames = new HashMap<>();
 
     public static ByteBuffer readFully(String fileName) throws IOException {
@@ -73,7 +83,7 @@ public class Main {
         // Write the end of the keyfile.
         outputBuffer.put("*end\n".getBytes());
 
-        // Write the trace file (which we've already buffered in profileBuffer)
+        // Write the trace file (which we"ve already buffered in profileBuffer)
         writeFileHeader(outputBuffer);
         outputBuffer.put(profileBuffer);
 
@@ -147,6 +157,7 @@ public class Main {
         // call stack makes sense.
         HashMap<Short, Stack<Integer>> callStacks = new HashMap<>();
 
+        int last_pos = profileFile.position();
         // Write the profile records
         while (profileFile.hasRemaining()) {
             // Read the next three Longs from the profile file
@@ -168,9 +179,13 @@ public class Main {
             if (actionCode == 0) {
                 // Method entry
                 callStack.push(methodId);
+                if(threadId == 5 && methodId != 21)
+                    System.err.println(repeat("|  ",callStack.size())+"Push "+methodId+": "+methodNames.get(methodId));
             } else if (actionCode == 1) {
-                // Method exit. Verify that we're popping a value equal to methodId, otherwise we're
+                // Method exit. Verify that we"re popping a value equal to methodId, otherwise we"re
                 // trying to return from the wrong function...
+                if(threadId == 5 && methodId != 21)
+                    System.err.println(repeat("|  ",callStack.size())+"Pop  "+methodId+": "+methodNames.get(methodId));
                 if (!callStack.isEmpty()) {
                     int topOfStack = callStack.pop();
                     if (topOfStack != methodId) {
@@ -182,8 +197,8 @@ public class Main {
                         System.err.println("Top of stack method: " + methodNames.get(topOfStack) + " (" + topOfStack + ")");
                         System.err.println("This record returns: " + methodNames.get(methodId) + " (" + methodId + ")");
 
-                        System.exit(3);
-                        return -1;
+                        //System.exit(3);
+                        //return -1;
                     }
                 }
             } else {
@@ -195,6 +210,8 @@ public class Main {
 
             int eventTime = (int) profileFile.getLong();
 
+            //if(threadId == 5)
+            //    System.out.printf("%03d %04d %d %8d\n", threadId, methodId, actionCode, eventTime);
             /* The record format is:
              * u2 thread ID
              * u4 method ID | method action
@@ -207,6 +224,13 @@ public class Main {
             profileBuffer.putShort(threadId);
             profileBuffer.putInt(methodId);
             profileBuffer.putInt(eventTime);
+
+            if((last_pos + 32) != profileFile.position())
+            {
+                System.err.println("BAD ADVANCE: "+(profileFile.position() - last_pos));
+                System.exit(5);
+            }
+            last_pos = profileFile.position();
         }
 
         profileFile.rewind();
