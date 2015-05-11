@@ -151,7 +151,8 @@ public class Main {
             short threadId = (short) profileFile.getLong();
             int methodId = (int) profileFile.getLong();
             int actionCode = (int) profileFile.getLong();
-            int eventTime = (int) profileFile.getLong();
+            int threadTime = (int) profileFile.getLong();
+            int globalTime = (int) profileFile.getLong();
 
             if (threadId > maxThreadID) {
                 maxThreadID = threadId;
@@ -206,7 +207,8 @@ public class Main {
 
             profileBuffer.putShort(threadId);
             profileBuffer.putInt(methodId);
-            profileBuffer.putInt(eventTime);
+            profileBuffer.putInt(threadTime);
+            profileBuffer.putInt(globalTime);
         }
 
         profileFile.rewind();
@@ -227,7 +229,7 @@ public class Main {
         return (
             "*version\n" +
             "2\n" +
-            "clock=global\n" +
+            "clock=dual\n" +
             "*threads\n"
         ).getBytes();
     }
